@@ -25,7 +25,7 @@ internal static partial class Program
         try
         {
             artifacts = Path.Combine(Environment.CurrentDirectory, "artifacts", "tests"); Directory.CreateDirectory(artifacts);
-            Parsing(); Persistence(); Languages(); UpdateSafety(); Sending().GetAwaiter().GetResult(); RenderSettings();
+            Parsing(); DiagnosticFiltering(); Persistence(); Languages(); UpdateSafety(); Sending().GetAwaiter().GetResult(); ChannelSelection(); RenderSettings();
             if (Environment.GetEnvironmentVariable("CHATRELAY_UPDATE_INTEGRATION") == "1")
             using (var service = new UpdateService())
             {
@@ -47,7 +47,7 @@ internal static partial class Program
             Check(ChatParser.TryParse("[12:34:56.789] ChatLog 00:"+channel.ToString("X4")+":Player:hello:world",out message) && message.Text == "hello:world", "parsed channel "+channel);
         }
         Check(ChatParser.TryParse("00|time|0818|Player|a|b|hash",out message) && message.Channel == 24 && message.Text == "a|b", "flags and delimiters");
-        Check(!ChatParser.TryParse("00|time|0839||System message|hash",out message),"system excluded");
+        Check(ChatParser.TryParse("00|time|0839||System message|hash",out message) && message.Channel==57,"system supported with flags");
         Check(!ChatParser.TryParse("21|time|0018|Player|attack|hash",out message),"combat excluded");
         Check(!ChatParser.TryParse("00|time|ZZZZ|Player|hello|hash",out message),"invalid code");
         Check(!ChatParser.TryParse("00|time|0018",out message),"truncated log");
@@ -115,15 +115,20 @@ internal static partial class Program
     {
         foreach(var lang in new[]{"en","ja","zh-CN","ko"})
         using(var form=new Form{ClientSize=new Size(820,760),ShowInTaskbar=false,Opacity=0})
-        using(var control=new SettingsControl(new PluginSettings{Language=lang,CheckUpdatesOnStartup=false}))
+        using(var control=new SettingsControl(new PluginSettings{Language=lang,CheckUpdatesOnStartup=false,Channels=new[]{14,24,37,56,57}}))
         {
             form.Controls.Add(control); form.Show(); Application.DoEvents(); form.PerformLayout();
-            var tabs=FindTabs(control); Check(tabs.TabCount==3,"three tabs");
-            for(int i=0;i<3;i++){tabs.SelectedIndex=i;Application.DoEvents();control.PerformLayout();using(var bitmap=new Bitmap(820,760)){control.DrawToBitmap(bitmap,new Rectangle(0,0,820,760));bitmap.Save(Path.Combine(artifacts,"settings-"+lang+"-"+i+".png"));}}
+            var tabs=FindTabs(control); Check(tabs.TabCount==4,"four tabs");
+            for(int i=0;i<4;i++){tabs.SelectedIndex=i;Application.DoEvents();control.PerformLayout();using(var bitmap=new Bitmap(820,760)){control.DrawToBitmap(bitmap,new Rectangle(0,0,820,760));bitmap.Save(Path.Combine(artifacts,"settings-"+lang+"-"+i+".png"));}}
             form.ClientSize=new Size(420,560); form.PerformLayout(); Check(control.Width<=420,"narrow pane");
+            tabs.SelectedIndex=1;Application.DoEvents();
+            foreach(var checkbox in Descendants(control).OfType<CheckBox>().Where(x=>x.Name.StartsWith("Channel"))) Check(checkbox.Height>=checkbox.Font.Height+12 && checkbox.Right<=checkbox.Parent.ClientSize.Width,"channel fits narrow card");
             var combo=Descendants(control).OfType<ComboBox>().Single(); combo.SelectedIndex=(combo.SelectedIndex+1)%4;
-            Check(tabs.TabPages[2].Text==Localization.Get(combo.SelectedIndex==0?"en":combo.SelectedIndex==1?"ja":combo.SelectedIndex==2?"zh-CN":"ko","Support"),"live language change");
+            Check(tabs.TabPages[3].Text==Localization.Get(combo.SelectedIndex==0?"en":combo.SelectedIndex==1?"ja":combo.SelectedIndex==2?"zh-CN":"ko","Support"),"live language change");
+            tabs.SelectedIndex=1; Application.DoEvents();
+            using(var bitmap=new Bitmap(420,560)){control.DrawToBitmap(bitmap,new Rectangle(0,0,420,560));bitmap.Save(Path.Combine(artifacts,"channels-narrow-"+lang+".png"));}
             control.Scale(new SizeF(1.5f,1.5f)); Check(control.IsDisposed==false,"DPI scaling");
+            foreach(var checkbox in Descendants(control).OfType<CheckBox>().Where(x=>x.Name.StartsWith("Channel"))) Check(checkbox.Height>=checkbox.Font.Height+12,"scaled channel height");
         }
     }
     private static IEnumerable<Control> Descendants(Control root) { foreach(Control c in root.Controls){yield return c;foreach(var x in Descendants(c))yield return x;} }

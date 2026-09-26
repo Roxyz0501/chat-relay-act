@@ -14,9 +14,10 @@ namespace ChatRelay
         private readonly TabControl tabs = new TabControl();
         private readonly TabPage settingsTab = new TabPage(), updateTab = new TabPage(), supportTab = new TabPage();
         private readonly TextBox webhook = new TextBox { UseSystemPasswordChar = true, Dock = DockStyle.Fill, MaxLength = 300 };
-        private readonly CheckedListBox channels = new CheckedListBox { Dock = DockStyle.Fill, CheckOnClick = true, IntegralHeight = false };
+        private readonly ChannelSelectionControl channels;
+        private readonly TabPage channelsTab = new TabPage();
         private readonly Button saveWebhook = new Button { AutoSize = true }, testButton = new Button { AutoSize = true };
-        private readonly Label webhookLabel = L(), channelLabel = L(), relayStatus = L();
+        private readonly Label webhookLabel = L(), relayStatus = L();
         private string relayKey = "Disabled";
         private int sentCount, droppedCount;
         public event EventHandler TestRequested;
@@ -45,10 +46,10 @@ namespace ChatRelay
             language.Items.AddRange(new object[] { "English", "日本語", "简体中文", "한국어" }); language.SelectedIndex = LanguageIndex(settings.Language);
             enabled.Checked = settings.Enabled; includeNames.Checked = settings.IncludeNames; checkUpdates.Checked = settings.CheckUpdatesOnStartup;
             webhook.Text = settings.ReadWebhook();
-            foreach (var channel in ChatParser.Channels) channels.Items.Add(channel, Array.IndexOf(settings.Channels, channel) >= 0);
+            channels = new ChannelSelectionControl(settings.Channels); channelsTab.Controls.Add(channels);
             var header = BuildHeader(); ConfigureTabs();
             settingsTab.Controls.Add(BuildSettingsLayout()); updateTab.Controls.Add(BuildUpdateLayout()); supportTab.Controls.Add(BuildSupportLayout());
-            tabs.TabPages.Add(settingsTab); tabs.TabPages.Add(updateTab); tabs.TabPages.Add(supportTab);
+            tabs.TabPages.Add(settingsTab); tabs.TabPages.Add(channelsTab); tabs.TabPages.Add(updateTab); tabs.TabPages.Add(supportTab);
             var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2, BackColor = BackColor };
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 76)); root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             root.Controls.Add(header, 0, 0); root.Controls.Add(tabs, 0, 1); Controls.Add(root);
@@ -76,15 +77,15 @@ namespace ChatRelay
         private Control BuildSettingsLayout()
         {
             var panel = new Panel { Dock = DockStyle.Fill, BackColor = Color.White, AutoScroll = true };
-            var layout = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, MinimumSize = new Size(600, 0), ColumnCount = 2, RowCount = 9, Padding = new Padding(24,20,24,20) };
+            var layout = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, MinimumSize = new Size(600, 0), ColumnCount = 2, RowCount = 7, Padding = new Padding(24,20,24,20) };
             layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 220)); layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
-            foreach (var h in new[] {42,38,38,42,44,32,260,92,76}) layout.RowStyles.Add(new RowStyle(SizeType.Absolute,h));
+            foreach (var h in new[] {42,38,38,42,44,92,76}) layout.RowStyles.Add(new RowStyle(SizeType.Absolute,h));
             layout.Controls.Add(languageLabel,0,0); layout.Controls.Add(language,1,0); Wide(layout,enabled,1); Wide(layout,includeNames,2);
             layout.Controls.Add(webhookLabel,0,3); layout.Controls.Add(webhook,1,3);
             var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill }; Secondary(saveWebhook); Secondary(testButton); buttons.Controls.Add(saveWebhook); buttons.Controls.Add(testButton); Wide(layout,buttons,4);
-            Wide(layout,channelLabel,5); Wide(layout,channels,6);
-            hint.AutoSize = false; hint.Dock = DockStyle.Fill; Wide(layout,hint,7);
-            relayStatus.AutoSize = false; relayStatus.Dock = DockStyle.Fill; Wide(layout,relayStatus,8);
+
+            hint.AutoSize = false; hint.Dock = DockStyle.Fill; Wide(layout,hint,5);
+            relayStatus.AutoSize = false; relayStatus.Dock = DockStyle.Fill; Wide(layout,relayStatus,6);
             panel.Controls.Add(layout); return panel;
         }
 
@@ -122,7 +123,7 @@ namespace ChatRelay
         private void WireEvents()
         {
             language.SelectedIndexChanged += Changed; enabled.CheckedChanged += Changed; includeNames.CheckedChanged += Changed; checkUpdates.CheckedChanged += Changed;
-            channels.ItemCheck += delegate { if (!loading && IsHandleCreated) BeginInvoke(new Action(() => Changed(channels, EventArgs.Empty))); };
+            channels.SelectionChanged += Changed;
             saveWebhook.Click += delegate {
                 Uri uri; var value = webhook.Text.Trim();
                 if (value.Length != 0 && !RelaySender.TryEndpoint(value,out uri)) { SetRelayStatus("InvalidWebhook",sentCount,droppedCount); return; }
@@ -135,7 +136,7 @@ namespace ChatRelay
         public void ApplyTo(PluginSettings value)
         {
             value.Language = CurrentLanguage; value.Enabled = enabled.Checked; value.IncludeNames = includeNames.Checked; value.CheckUpdatesOnStartup = checkUpdates.Checked;
-            var selected = new System.Collections.Generic.List<int>(); for (var i=0;i<channels.Items.Count;i++) if(channels.GetItemChecked(i)) selected.Add(ChatParser.Channels[i]); value.Channels = selected.ToArray(); value.Normalize();
+            value.Channels = channels.SelectedChannels; value.Normalize();
         }
         internal void SetRelayStatus(string key,int sent,int dropped) { relayKey = key; sentCount=sent; droppedCount=dropped; relayStatus.Text = T(key) + "\r\n" + T("Counts",sent,dropped); }
 
@@ -159,9 +160,9 @@ namespace ChatRelay
             var family = Localization.FontFamily(CurrentLanguage); ApplyFontFamily(this, family);
             headerTitle.Text = T("PluginTab"); headerTitle.Font = new Font(family, 17f, FontStyle.Bold); headerSubtitle.Text = T("Subtitle"); headerSubtitle.Font = new Font(family, 8.5f);
             tabs.Font = new Font(family, 9f, FontStyle.Bold); settingsTab.Text = T("Settings"); updateTab.Text = T("Updates"); supportTab.Text = T("Support");
-            languageLabel.Text=T("Language"); enabled.Text=T("Enabled"); includeNames.Text=T("IncludeNames"); webhookLabel.Text=T("Webhook"); saveWebhook.Text=T("SaveWebhook"); testButton.Text=T("Test"); channelLabel.Text=T("Channels"); hint.Text=T("Hint");
+            languageLabel.Text=T("Language"); enabled.Text=T("Enabled"); includeNames.Text=T("IncludeNames"); webhookLabel.Text=T("Webhook"); saveWebhook.Text=T("SaveWebhook"); testButton.Text=T("Test"); hint.Text=T("Hint");
             loading = true;
-            for(var i=0;i<channels.Items.Count;i++) { var selected=channels.GetItemChecked(i); channels.Items[i]=T(ChatParser.ChannelKey(ChatParser.Channels[i])); channels.SetItemChecked(i,selected); }
+            channelsTab.Text=T("Channels"); channels.ApplyLanguage(CurrentLanguage);
             loading = false; SetRelayStatus(relayKey,sentCount,droppedCount);
             updateTitle.Text = T("UpdateTitle"); updateTitle.Font = new Font(family, 16f, FontStyle.Bold); updateDescription.Text = T("UpdateDescription"); checkUpdates.Text = T("CheckStartup"); checkButton.Text = T("CheckNow"); currentCaption.Text = T("CurrentVersion"); latestCaption.Text = T("LatestVersion"); releaseCaption.Text = T("ReleaseNotes"); updateButton.Text = T("UpdateNow"); laterButton.Text = T("Later");
             supportHeading.Text = T("SupportHeading"); supportHeading.Font = new Font(family, 18f, FontStyle.Bold); supportDescription.Text = T("SupportDescription"); supportOptional.Text = T("SupportBody"); supportOptional.Font = new Font(family, 9.5f, FontStyle.Bold); supportButton.Text = T("SupportButton"); supportSafety.Text = T("SupportSafety");

@@ -64,7 +64,7 @@ namespace ChatRelay
                 if (stopped || !forwarding || sender == null) return;
                 ChatMessage message;
                 // Parse only one representation of each ACT event to avoid duplicate forwarding.
-                if (!ChatParser.TryParse(args.originalLogLine, out message) && !ChatParser.TryParse(args.logLine, out message)) return;
+                if (!ChatParser.TryParseEvent(isImport, args.originalLogLine, args.logLine, out message)) return;
                 if (selected.Contains(message.Channel)) sender.Enqueue(ChatParser.Format(message, relayLanguage, includeNames));
             }
         }
