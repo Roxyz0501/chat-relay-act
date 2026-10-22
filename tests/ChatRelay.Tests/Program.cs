@@ -25,7 +25,7 @@ internal static partial class Program
         try
         {
             artifacts = Path.Combine(Environment.CurrentDirectory, "artifacts", "tests"); Directory.CreateDirectory(artifacts);
-            Parsing(); DiagnosticFiltering(); Persistence(); Languages(); UpdateSafety(); Sending().GetAwaiter().GetResult(); ChannelSelection(); RenderSettings();
+            Parsing(); DiagnosticFiltering(); Persistence(); SettingsSaveScheduling(); Languages(); UpdateSafety(); Sending().GetAwaiter().GetResult(); ChannelSelection(); RenderSettings();
             if (Environment.GetEnvironmentVariable("CHATRELAY_UPDATE_INTEGRATION") == "1")
             using (var service = new UpdateService())
             {
@@ -70,6 +70,26 @@ internal static partial class Program
         string error; var clicks=0; Check(SettingsControl.TryOpenSupportLink(info=>{clicks++;Check(info.FileName==SettingsControl.SupportUrl && info.UseShellExecute,"support target");return null;},out error) && clicks==1,"explicit support click");
         Check(!SettingsControl.TryOpenSupportLink(info=>{throw new IOException();},out error),"support failure contained");
     }
+    private static void SettingsSaveScheduling()
+    {
+        var root=Path.Combine(artifacts,"persistence-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(root);
+        var path=Path.Combine(root,"settings.xml");var settings=new PluginSettings{Language="ja"};
+        var persistence=new SettingsPersistence(settings,path,null);var now=new DateTime(2026,10,22,0,0,0,DateTimeKind.Utc);var schedule=new SettingsSaveCoordinator(persistence,now);
+        Check(!schedule.Poll(now.AddSeconds(59))&&persistence.SuccessfulWrites==0&&!File.Exists(path)&&!File.Exists(path+".tmp"),"no early or unchanged file write");
+        settings.Enabled=true;settings.IncludeNames=false;settings.Enabled=false;
+        Check(!schedule.Poll(now.AddSeconds(59))&&persistence.SuccessfulWrites==0,"rapid edits wait for interval");
+        Check(schedule.Poll(now.AddSeconds(60))&&persistence.SuccessfulWrites==1,"latest state saved at 60 seconds");
+        var bytes=File.ReadAllBytes(path);Check(!schedule.Poll(now.AddSeconds(120))&&persistence.SuccessfulWrites==1,"unchanged check performs zero writes");
+        settings.IncludeNames=true;settings.IncludeNames=false;Check(!schedule.Flush()&&persistence.SuccessfulWrites==1,"reverted settings skip final write");
+        settings.Language="ko";Check(schedule.Flush()&&persistence.SuccessfulWrites==2,"shutdown flush saves latest settings");
+        Check(PluginSettings.Load(path).Language=="ko","latest config reloads");
+
+        var original=File.ReadAllBytes(path);var failingStore=new AtomicSettingsFileStore{BeforeCommit=()=>{throw new IOException("simulated commit failure");}};
+        settings.Language="zh-CN";var failed=new SettingsPersistence(settings,path,SettingsPersistence.Serialize(PluginSettings.Load(path)),failingStore);
+        Throws(()=>failed.SaveIfChanged(),"failed save reported");
+        Check(failed.HasChanges&&File.ReadAllBytes(path).SequenceEqual(original)&&!File.Exists(path+".tmp"),"failed save preserves prior file and dirty state");
+        failingStore.BeforeCommit=null;Check(failed.SaveIfChanged()&&!failed.HasChanges&&PluginSettings.Load(path).Language=="zh-CN","failed save recovers");
+    }
     private static void Languages()
     {
         Check(Localization.MapCulture(new CultureInfo("fr-FR"))=="en","unknown OS fallback");
@@ -96,7 +116,9 @@ internal static partial class Program
         }
         var blocked=new FakeHandler { Block=true };
         var canceled=new RelaySender(endpoint,blocked); canceled.Enqueue("first"); await Until(()=>blocked.Calls>0);
-        for(int i=0;i<250;i++) canceled.Enqueue("queued"); Check(canceled.Dropped>=50,"bounded queue"); canceled.Dispose(); await Until(()=>blocked.Canceled); Check(!canceled.Enqueue("late"),"disabled sender rejects");
+        for(int i=0;i<250;i++) canceled.Enqueue("queued"); Check(canceled.Dropped>=50,"bounded queue");
+        var stop=Task.Run(()=>canceled.Stop()); await Until(()=>blocked.Canceled); await stop;
+        Check(!canceled.Enqueue("late"),"disabled sender rejects"); Check(stop.IsCompleted,"sender worker fully stopped before return");
         var failed=new FakeHandler { Fail=true };
         using(var sender=new RelaySender(endpoint,failed)) { sender.Enqueue("test"); await Until(()=>sender.Dropped==1); Check(sender.StatusKey=="SendFailed" && failed.Calls==1,"HTTP failure no blind retry"); }
     }

@@ -31,9 +31,13 @@ namespace ChatRelay
                 EnsureAllowedUri(new Uri(UpdateConfiguration.ReleasesApiUrl), true);
                 return await CheckFromFetcherAsync(async () =>
                 {
-                    var json = await client.GetStringAsync(UpdateConfiguration.ReleasesApiUrl).ConfigureAwait(false);
-                    cancellationToken.ThrowIfCancellationRequested();
-                    return json;
+                    using (var response = await client.GetAsync(UpdateConfiguration.ReleasesApiUrl, cancellationToken).ConfigureAwait(false))
+                    {
+                        response.EnsureSuccessStatusCode();
+                        var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                        cancellationToken.ThrowIfCancellationRequested();
+                        return json;
+                    }
                 }, currentVersion).ConfigureAwait(false);
             }
             catch (Exception ex)

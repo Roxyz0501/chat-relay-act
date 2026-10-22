@@ -23,6 +23,6 @@ namespace ChatRelay
         public string ReadWebhook() { try { return string.IsNullOrEmpty(ProtectedWebhook) ? "" : Encoding.UTF8.GetString(ProtectedData.Unprotect(Convert.FromBase64String(ProtectedWebhook), null, DataProtectionScope.CurrentUser)); } catch { return ""; } }
         public void SetWebhook(string value) { ProtectedWebhook = string.IsNullOrEmpty(value) ? "" : Convert.ToBase64String(ProtectedData.Protect(Encoding.UTF8.GetBytes(value), null, DataProtectionScope.CurrentUser)); }
         public static PluginSettings Load(string path) { try { using (var stream = File.OpenRead(path)) { var value = (PluginSettings)new XmlSerializer(typeof(PluginSettings)).Deserialize(stream); value.Normalize(); return value; } } catch { return new PluginSettings(); } }
-        public void Save(string path) { Normalize(); Directory.CreateDirectory(Path.GetDirectoryName(path)); var temp = path + ".tmp"; using (var stream = File.Create(temp)) new XmlSerializer(typeof(PluginSettings)).Serialize(stream, this); if (File.Exists(path)) File.Replace(temp, path, path + ".bak"); else File.Move(temp, path); }
+        public void Save(string path) { new AtomicSettingsFileStore().WriteAtomic(path, Encoding.UTF8.GetBytes(SettingsPersistence.Serialize(this))); }
     }
 }

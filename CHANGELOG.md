@@ -1,5 +1,12 @@
 # Release notes
 
+## v1.1.1
+
+- Save changed settings at a 60-second interval and flush pending changes on normal plugin shutdown.
+- Preserve the existing settings file if a save fails, and avoid rewriting unchanged settings.
+- Wait for Discord sender and update tasks to finish when the plugin is disabled or reloaded.
+- Add regression tests for save scheduling, recovery after failed saves, and worker shutdown.
+
 ## v1.1.0
 
 - HojoringのBeacon・変数変更・combatantクリアなどの内部Echoを転送対象から除外。通常のゲーム内Echoは維持。

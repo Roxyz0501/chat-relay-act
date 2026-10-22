@@ -6,6 +6,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace ChatRelay
@@ -15,7 +16,10 @@ namespace ChatRelay
         private readonly object gate = new object();
         private readonly UpdateService updates = new UpdateService();
         private readonly CancellationTokenSource cancellation = new CancellationTokenSource();
+        private readonly HashSet<Task> updateTasks = new HashSet<Task>();
         private PluginSettings settings;
+        private SettingsPersistence persistence;
+        private SettingsSaveCoordinator saveCoordinator;
         private SettingsControl control;
         private Label status;
         private string settingsPath;
@@ -23,39 +27,50 @@ namespace ChatRelay
         private HashSet<int> selected = new HashSet<int>();
         private bool forwarding, includeNames, stopped, checking, preparing;
         private string relayLanguage;
-        private System.Windows.Forms.Timer timer;
+        private System.Windows.Forms.Timer statusTimer, saveTimer;
         private UpdateCheckResult lastUpdate;
 
         public void InitPlugin(TabPage page, Label statusLabel)
         {
             status = statusLabel;
             settingsPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Advanced Combat Tracker", "Config", "ChatRelay.xml");
-            settings = PluginSettings.Load(settingsPath); settings.InitializeLanguageIfMissing(CultureInfo.CurrentUICulture); settings.Normalize();
+            var existed = File.Exists(settingsPath);
+            settings = PluginSettings.Load(settingsPath);
+            var savedSnapshot = existed ? SettingsPersistence.Serialize(settings) : null;
+            settings.InitializeLanguageIfMissing(CultureInfo.CurrentUICulture); settings.Normalize();
+            persistence = new SettingsPersistence(settings, settingsPath, savedSnapshot);
+            saveCoordinator = new SettingsSaveCoordinator(persistence, DateTime.UtcNow);
             control = new SettingsControl(settings); page.Text = "Chat Relay"; page.Controls.Add(control);
             control.SettingsChanged += SettingsChanged;
             control.TestRequested += Test;
-            control.CheckUpdatesRequested += delegate { CheckUpdates(true); };
+            control.CheckUpdatesRequested += delegate { StartCheckUpdates(true); };
             control.InstallUpdateRequested += Install;
-            control.LaterRequested += delegate { if (lastUpdate?.Release == null) return; settings.SkippedVersion = lastUpdate.Release.Version.ToString(); Save(); control.ShowUpdateSkipped(settings.SkippedVersion); };
-            Configure(); Save();
+            control.LaterRequested += delegate { if (lastUpdate?.Release == null) return; settings.SkippedVersion = lastUpdate.Release.Version.ToString(); control.ShowUpdateSkipped(settings.SkippedVersion); };
+            Configure();
             ActGlobals.oFormActMain.OnLogLineRead += LogLineRead;
-            timer = new System.Windows.Forms.Timer { Interval = 500 }; timer.Tick += RefreshStatus; timer.Start();
+            statusTimer = new System.Windows.Forms.Timer { Interval = 500 }; statusTimer.Tick += RefreshStatus; statusTimer.Start();
+            saveTimer = new System.Windows.Forms.Timer { Interval = (int)SettingsSaveCoordinator.Interval.TotalMilliseconds }; saveTimer.Tick += SaveSettings; saveTimer.Start();
             status.Text = T("Started");
-            if (settings.CheckUpdatesOnStartup) CheckUpdates(false);
+            if (settings.CheckUpdatesOnStartup) StartCheckUpdates(false);
         }
+
         private string T(string key, params object[] args) => Localization.Get(settings?.Language ?? "en", key, args);
-        private void Save() { try { settings.Save(settingsPath); } catch { status.Text = T("SaveFailed"); } }
-        private void SettingsChanged(object source, EventArgs e) { Configure(); Save(); }
+        private void SaveSettings(object source, EventArgs e) { try { saveCoordinator?.Poll(DateTime.UtcNow); } catch { if (!stopped && status != null) status.Text = T("SaveFailed"); } }
+        private void SettingsChanged(object source, EventArgs e) { if (!stopped) Configure(); }
         private void Configure()
         {
+            RelaySender old;
             lock (gate)
             {
-                sender?.Dispose(); sender = null;
+                if (stopped) return;
+                old = sender; sender = null;
                 forwarding = settings.Enabled; includeNames = settings.IncludeNames; selected = new HashSet<int>(settings.Channels); relayLanguage = settings.Language;
                 Uri endpoint; if (RelaySender.TryEndpoint(settings.ReadWebhook(), out endpoint)) sender = new RelaySender(endpoint);
             }
+            old?.Stop();
             RefreshStatus(null, EventArgs.Empty);
         }
+
         private void LogLineRead(bool isImport, LogLineEventArgs args)
         {
             if (isImport || args == null) return;
@@ -63,7 +78,6 @@ namespace ChatRelay
             {
                 if (stopped || !forwarding || sender == null) return;
                 ChatMessage message;
-                // Parse only one representation of each ACT event to avoid duplicate forwarding.
                 if (!ChatParser.TryParseEvent(isImport, args.originalLogLine, args.logLine, out message)) return;
                 if (selected.Contains(message.Channel)) sender.Enqueue(ChatParser.Format(message, relayLanguage, includeNames));
             }
@@ -74,37 +88,81 @@ namespace ChatRelay
         }
         private void RefreshStatus(object source, EventArgs e)
         {
-            if (control == null || control.IsDisposed) return;
+            if (control == null || control.IsDisposed || stopped) return;
             lock (gate) control.SetRelayStatus(sender == null ? (forwarding ? "InvalidWebhook" : "Disabled") : !forwarding && sender.Sent == 0 && sender.Dropped == 0 ? "Disabled" : sender.StatusKey, sender?.Sent ?? 0, sender?.Dropped ?? 0);
         }
-        private async void CheckUpdates(bool manual)
+
+        private void StartCheckUpdates(bool manual)
         {
-            if (checking || preparing || stopped) return; checking = true; control.SetUpdateChecking();
+            lock (gate)
+            {
+                if (checking || preparing || stopped) return;
+                checking = true;
+                if (control != null && !control.IsDisposed) control.SetUpdateChecking();
+                TrackUpdateTask(Task.Run(() => CheckUpdatesAsync(manual)));
+            }
+        }
+        private async Task CheckUpdatesAsync(bool manual)
+        {
             try
             {
                 var current = Assembly.GetExecutingAssembly().GetName().Version;
-                var result = await updates.CheckAsync(current, cancellation.Token); if (stopped) return;
-                lastUpdate = result; control.ShowUpdateResult(result, current);
-                if (result.Status == UpdateCheckStatus.UpdateAvailable)
+                var result = await updates.CheckAsync(current, cancellation.Token).ConfigureAwait(false);
+                lock (gate) { if (stopped) return; lastUpdate = result; }
+                PostUi(() =>
                 {
-                    if (!manual && settings.SkippedVersion == result.Release.Version.ToString()) control.ShowUpdateSkipped(settings.SkippedVersion);
-                    else { control.FocusUpdateTab(); status.Text = T("UpdateAvailable", current.ToString(3), result.Release.Version); }
+                    control.ShowUpdateResult(result, current);
+                    if (result.Status == UpdateCheckStatus.UpdateAvailable)
+                    {
+                        if (!manual && settings.SkippedVersion == result.Release.Version.ToString()) control.ShowUpdateSkipped(settings.SkippedVersion);
+                        else { control.FocusUpdateTab(); status.Text = T("UpdateAvailable", current.ToString(3), result.Release.Version); }
+                    }
+                });
+            }
+            finally { lock (gate) checking = false; }
+        }
+        private void Install(object source, EventArgs e)
+        {
+            lock (gate)
+            {
+                if (preparing || stopped || lastUpdate?.Status != UpdateCheckStatus.UpdateAvailable) return;
+                preparing = true;
+                try
+                {
+                    var release = lastUpdate.Release;
+                    var target = ResolvePluginDllPath(ActGlobals.oFormActMain.ActPlugins, this);
+                    control.SetUpdateText("Preparing");
+                    TrackUpdateTask(Task.Run(() => InstallAsync(release, target)));
+                }
+                catch
+                {
+                    preparing = false;
+                    control.SetUpdateText("UpdateFailed", T("UpdateProblem"));
+                    status.Text = T("UpdateProblem");
                 }
             }
-            finally { checking = false; }
         }
-        private async void Install(object source, EventArgs e)
+        private async Task InstallAsync(ReleaseInfo release, string target)
         {
-            if (preparing || stopped || lastUpdate?.Status != UpdateCheckStatus.UpdateAvailable) return;
-            preparing = true; control.SetUpdateText("Preparing");
             try
             {
-                var target = ResolvePluginDllPath(ActGlobals.oFormActMain.ActPlugins, this);
-                var package = await updates.DownloadAndVerifyAsync(lastUpdate.Release, cancellation.Token); if (stopped) return;
-                updates.LaunchUpdater(package, target); control.SetUpdateText("Prepared"); status.Text = T("Prepared");
+                var package = await updates.DownloadAndVerifyAsync(release, cancellation.Token).ConfigureAwait(false);
+                lock (gate) { if (stopped) return; updates.LaunchUpdater(package, target); }
+                PostUi(() => { control.SetUpdateText("Prepared"); status.Text = T("Prepared"); });
             }
-            catch { if (!stopped) { control.SetUpdateText("UpdateFailed", T("UpdateProblem")); status.Text = T("UpdateProblem"); } }
-            finally { preparing = false; }
+            catch { PostUi(() => { control.SetUpdateText("UpdateFailed", T("UpdateProblem")); status.Text = T("UpdateProblem"); }); }
+            finally { lock (gate) preparing = false; }
+        }
+        private void TrackUpdateTask(Task task)
+        {
+            updateTasks.Add(task);
+            task.ContinueWith(t => { lock (gate) updateTasks.Remove(t); }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        }
+        private void PostUi(Action action)
+        {
+            var target = control;
+            if (target == null || target.IsDisposed || !target.IsHandleCreated) return;
+            try { target.BeginInvoke((MethodInvoker)delegate { if (!stopped && !target.IsDisposed) action(); }); } catch (InvalidOperationException) { }
         }
         internal static string ResolvePluginDllPath(IEnumerable<ActPluginData> plugins, IActPluginV1 instance)
         {
@@ -120,11 +178,35 @@ namespace ChatRelay
             if (!string.Equals(Path.GetFileName(path), UpdateConfiguration.PluginFileName, StringComparison.OrdinalIgnoreCase) || !File.Exists(path)) throw new InvalidOperationException("PluginPathUnavailable");
             return path;
         }
+
         public void DeInitPlugin()
         {
-            lock (gate) { stopped = true; forwarding = false; sender?.Dispose(); sender = null; }
+            RelaySender old;
+            Task[] pending;
+            lock (gate)
+            {
+                if (stopped) return;
+                stopped = true; forwarding = false; old = sender; sender = null;
+                pending = updateTasks.ToArray();
+            }
             ActGlobals.oFormActMain.OnLogLineRead -= LogLineRead;
-            timer?.Stop(); timer?.Dispose(); cancellation.Cancel(); Save(); control?.Dispose(); updates.Dispose(); status.Text = T("Stopped");
+            StopTimer(statusTimer, RefreshStatus); StopTimer(saveTimer, SaveSettings);
+            cancellation.Cancel();
+            old?.Stop();
+            try { Task.WaitAll(pending); } catch (AggregateException ex) { if (ex.InnerExceptions.Any(x => !(x is OperationCanceledException))) { } }
+            var saveFailed = false;
+            try { saveCoordinator?.Flush(); } catch { saveFailed = true; }
+            control.SettingsChanged -= SettingsChanged;
+            control.TestRequested -= Test;
+            updates.Dispose(); cancellation.Dispose();
+            control?.Dispose();
+            if (status != null) status.Text = T(saveFailed ? "SaveFailed" : "Stopped");
+        }
+
+        private static void StopTimer(System.Windows.Forms.Timer value, EventHandler handler)
+        {
+            if (value == null) return;
+            value.Stop(); value.Tick -= handler; value.Dispose();
         }
     }
 }

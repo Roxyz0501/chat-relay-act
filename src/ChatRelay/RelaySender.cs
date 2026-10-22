@@ -20,6 +20,7 @@ namespace ChatRelay
         private readonly HttpClient client;
         private readonly Uri endpoint;
         private readonly Task worker;
+        private readonly object enqueueGate = new object();
         private int queued, disposed;
         internal string StatusKey = "Ready";
         internal int Sent, Dropped;
@@ -39,13 +40,16 @@ namespace ChatRelay
         }
         internal bool Enqueue(string text)
         {
-            if (Volatile.Read(ref disposed) != 0) return false;
-            foreach (var part in ChatParser.Split(text))
+            lock (enqueueGate)
             {
-                if (Interlocked.Increment(ref queued) > 200) { Interlocked.Decrement(ref queued); Interlocked.Increment(ref Dropped); StatusKey = "QueueFull"; return false; }
-                queue.Enqueue(part); signal.Release();
+                if (disposed != 0) return false;
+                foreach (var part in ChatParser.Split(text))
+                {
+                    if (Interlocked.Increment(ref queued) > 200) { Interlocked.Decrement(ref queued); Interlocked.Increment(ref Dropped); StatusKey = "QueueFull"; return false; }
+                    queue.Enqueue(part); signal.Release();
+                }
+                return true;
             }
-            return true;
         }
         internal static string Payload(string content) => new JavaScriptSerializer().Serialize(new { content, allowed_mentions = new { parse = new string[0] }, flags = 4 });
         private async Task RunAsync()
@@ -93,12 +97,16 @@ namespace ChatRelay
         {
             try { var value = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(json); var seconds = Convert.ToDouble(value["retry_after"], CultureInfo.InvariantCulture); return double.IsNaN(seconds) || double.IsInfinity(seconds) || seconds < 0 ? 5 : seconds; } catch { return 5; }
         }
-        public void Dispose()
+        internal void Stop()
         {
-            if (Interlocked.Exchange(ref disposed, 1) != 0) return;
-            cancellation.Cancel();
-            // Dispose after the worker has unwound; never block ACT's UI thread.
-            worker.ContinueWith(_ => { client.Dispose(); cancellation.Dispose(); });
+            lock (enqueueGate)
+            {
+                if (disposed != 0) { }
+                else { disposed = 1; cancellation.Cancel(); }
+            }
+            try { worker.GetAwaiter().GetResult(); }
+            finally { client.Dispose(); signal.Dispose(); cancellation.Dispose(); }
         }
+        public void Dispose() => Stop();
     }
 }
