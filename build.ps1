@@ -1,7 +1,10 @@
 param([string]$Configuration = "Release", [string]$ActPath = "C:\Program Files (x86)\Advanced Combat Tracker\Advanced Combat Tracker.exe")
 $ErrorActionPreference = "Stop"
 if (-not (Test-Path -LiteralPath $ActPath)) { throw "Advanced Combat Tracker.exe was not found. Pass -ActPath." }
-$msbuild = "C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe"
+$vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+if (-not (Test-Path -LiteralPath $vswhere)) { throw "Visual Studio discovery tool was not found." }
+$vsPath = & $vswhere -latest -products * -requires Microsoft.Component.MSBuild -property installationPath
+$msbuild = Join-Path $vsPath "MSBuild\Current\Bin\MSBuild.exe"
 if (-not (Test-Path -LiteralPath $msbuild)) { throw "Visual Studio MSBuild was not found." }
 & $msbuild (Join-Path $PSScriptRoot "ChatRelay.sln") /t:Build "/p:Configuration=$Configuration" "/p:ActPath=$ActPath" /v:minimal
 if ($LASTEXITCODE -ne 0) { throw "Build failed." }
@@ -22,5 +25,6 @@ $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $zip).Hash.ToLowerInvariant
 Set-Content -LiteralPath (Join-Path $dist "ChatRelay-v$version.sha256") -Value "$hash  $zipName" -Encoding ascii
 & (Join-Path $PSScriptRoot 'verify-release.ps1') -ZipPath $zip -Version $version
 Write-Host "Built $dll"; Write-Host "Release asset $zip"
+
 
 
