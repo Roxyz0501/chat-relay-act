@@ -6,7 +6,7 @@ if (-not (Test-Path -LiteralPath $vswhere)) { throw "Visual Studio discovery too
 $vsPath = & $vswhere -latest -products * -requires Microsoft.Component.MSBuild -property installationPath
 $msbuild = Join-Path $vsPath "MSBuild\Current\Bin\MSBuild.exe"
 if (-not (Test-Path -LiteralPath $msbuild)) { throw "Visual Studio MSBuild was not found." }
-& $msbuild (Join-Path $PSScriptRoot "ChatRelay.sln") /t:Build "/p:Configuration=$Configuration" "/p:ActPath=$ActPath" /v:minimal
+& $msbuild (Join-Path $PSScriptRoot "ChatRelay.sln") /t:Restore,Build "/p:Configuration=$Configuration" "/p:ActPath=$ActPath" "/p:RestoreConfigFile=$PSScriptRoot\NuGet.Config" /v:minimal
 if ($LASTEXITCODE -ne 0) { throw "Build failed." }
 $testExe = Join-Path $PSScriptRoot "tests\ChatRelay.Tests\bin\$Configuration\net48\ChatRelay.Tests.exe"
 Push-Location $PSScriptRoot
@@ -25,6 +25,8 @@ $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $zip).Hash.ToLowerInvariant
 Set-Content -LiteralPath (Join-Path $dist "ChatRelay-v$version.sha256") -Value "$hash  $zipName" -Encoding ascii
 & (Join-Path $PSScriptRoot 'verify-release.ps1') -ZipPath $zip -Version $version
 Write-Host "Built $dll"; Write-Host "Release asset $zip"
+
+
 
 
 
