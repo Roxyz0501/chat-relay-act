@@ -141,6 +141,12 @@ namespace ChatRelay
         internal void SetRelayStatus(string key,int sent,int dropped) { relayKey = key; sentCount=sent; droppedCount=dropped; relayStatus.Text = T(key) + "\r\n" + T("Counts",sent,dropped); }
 
         internal void SetUpdateChecking() { AvailableRelease = null; checkButton.Enabled = false; updateButton.Enabled = laterButton.Enabled = false; latestValue.Text = "—"; releaseNotes.Clear(); updateStatus.ForeColor = Color.FromArgb(73, 96, 128); SetUpdateMessage("Checking"); }
+        internal void SetPreparedUpdate(string stagedDll, string targetDll)
+        {
+            releaseNotes.Text = T("PreparedInstructions", stagedDll, targetDll);
+
+            SetUpdateText("Prepared");
+        }
         internal void ShowUpdateResult(UpdateCheckResult result, Version current)
         {
             checkButton.Enabled = true; AvailableRelease = result == null ? null : result.Release; currentValue.Text = current.ToString(3); latestValue.Text = result?.Release?.Version?.ToString() ?? "—";
@@ -199,3 +205,4 @@ namespace ChatRelay
         public static bool TryOpenSupportLink(Func<ProcessStartInfo, Process> opener, out string error) { try { opener(new ProcessStartInfo(SupportUrl) { UseShellExecute = true }); error = null; return true; } catch (Exception ex) { error = ex.Message; return false; } }
     }
 }
+

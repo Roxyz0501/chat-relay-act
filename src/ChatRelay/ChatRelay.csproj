@@ -5,7 +5,7 @@
     <LangVersion>7.3</LangVersion>
     <AssemblyName>ChatRelay</AssemblyName>
     <RootNamespace>ChatRelay</RootNamespace>
-    <Version>1.1.1</Version>
+    <Version>1.1.2</Version>
     <Authors>Roxyz0501</Authors>
     <Company>Roxyz0501</Company>
     <Product>Chat Relay for ACT</Product>
@@ -22,3 +22,5 @@
     <Reference Include="System.Windows.Forms" />
   </ItemGroup>
 </Project>
+
+

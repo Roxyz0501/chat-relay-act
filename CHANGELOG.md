@@ -1,5 +1,12 @@
 # Release notes
 
+## v1.1.2
+
+- Remove the background updater process. Updates are verified and staged; users copy the DLL after closing ACT.
+- Reuse verified same-version packages and clean incomplete or superseded staging folders.
+- Bound archive expansion to 50 MiB per file and 60 MiB total, validating all entries before extraction and honoring cancellation.
+- Add synthetic HTTP/package lifecycle tests for cache reuse, failed preparation, cancellation, and no writes after completion.
+
 ## v1.1.1
 
 - Save changed settings at a 60-second interval and flush pending changes on normal plugin shutdown.

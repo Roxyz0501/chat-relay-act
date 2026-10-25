@@ -30,7 +30,7 @@ namespace ChatRelay
     internal sealed class PreparedUpdate
     {
         public string StagedDllPath { get; set; }
-        public string StagedUpdaterPath { get; set; }
+        public string PreparedDirectory { get; set; }
         public string DllSha256 { get; set; }
         public ReleaseInfo Release { get; set; }
     }

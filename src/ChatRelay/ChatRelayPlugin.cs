@@ -33,6 +33,7 @@ namespace ChatRelay
         public void InitPlugin(TabPage page, Label statusLabel)
         {
             status = statusLabel;
+            UpdateService.CleanupAppliedPackages(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Roxyz0501", "ChatRelay", "PreparedUpdates"), Assembly.GetExecutingAssembly().GetName().Version);
             settingsPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Advanced Combat Tracker", "Config", "ChatRelay.xml");
             var existed = File.Exists(settingsPath);
             settings = PluginSettings.Load(settingsPath);
@@ -130,9 +131,9 @@ namespace ChatRelay
                 try
                 {
                     var release = lastUpdate.Release;
-                    var target = ResolvePluginDllPath(ActGlobals.oFormActMain.ActPlugins, this);
+
                     control.SetUpdateText("Preparing");
-                    TrackUpdateTask(Task.Run(() => InstallAsync(release, target)));
+                    TrackUpdateTask(Task.Run(() => InstallAsync(release)));
                 }
                 catch
                 {
@@ -142,13 +143,14 @@ namespace ChatRelay
                 }
             }
         }
-        private async Task InstallAsync(ReleaseInfo release, string target)
+        private async Task InstallAsync(ReleaseInfo release)
         {
             try
             {
                 var package = await updates.DownloadAndVerifyAsync(release, cancellation.Token).ConfigureAwait(false);
-                lock (gate) { if (stopped) return; updates.LaunchUpdater(package, target); }
-                PostUi(() => { control.SetUpdateText("Prepared"); status.Text = T("Prepared"); });
+                lock (gate) { if (stopped) return; }
+                var targetPath = ResolvePluginDllPath(ActGlobals.oFormActMain.ActPlugins, this);
+                PostUi(() => { control.SetPreparedUpdate(package.StagedDllPath, targetPath); status.Text = T("Prepared"); });
             }
             catch { PostUi(() => { control.SetUpdateText("UpdateFailed", T("UpdateProblem")); status.Text = T("UpdateProblem"); }); }
             finally { lock (gate) preparing = false; }
@@ -210,3 +212,7 @@ namespace ChatRelay
         }
     }
 }
+
+
+
+

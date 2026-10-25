@@ -6,11 +6,16 @@ using System.IO.Compression;
 using System.Linq;
 using System.Reflection;
 using System.Security.Cryptography;
+using System.Threading;
 
 namespace ChatRelay
 {
     internal static class UpdatePackageVerifier
     {
+        internal const long MaximumPackageEntryBytes = 50L * 1024 * 1024;
+        internal const long MaximumPackageExpandedBytes = 60L * 1024 * 1024;
+        private static readonly string[] ExpectedPackageFiles = { UpdateConfiguration.PluginFileName, "README.md" };
+
         public static string ComputeSha256(string path)
         {
             using (var stream = File.OpenRead(path))
@@ -20,6 +25,11 @@ namespace ChatRelay
 
         public static bool VerifySha256(string path, string expected) =>
             !string.IsNullOrWhiteSpace(expected) && string.Equals(ComputeSha256(path), expected.Trim(), StringComparison.OrdinalIgnoreCase);
+
+        internal static string ComputeSha256Bytes(byte[] bytes)
+        {
+            using (var sha = SHA256.Create()) return BitConverter.ToString(sha.ComputeHash(bytes)).Replace("-", "").ToLowerInvariant();
+        }
 
         public static string FindManifestHash(string manifest, string assetName)
         {
@@ -45,21 +55,48 @@ namespace ChatRelay
             return destination;
         }
 
-        public static void ExtractValidated(string zipPath, string destinationRoot)
+        public static void ExtractValidated(string zipPath, string destinationRoot, long maximumExpandedBytes = MaximumPackageExpandedBytes, CancellationToken cancellationToken = default(CancellationToken))
         {
-            Directory.CreateDirectory(destinationRoot);
+            if (maximumExpandedBytes < 0) throw new ArgumentOutOfRangeException("maximumExpandedBytes");
             using (var archive = ZipFile.OpenRead(zipPath))
             {
-                var expected = new System.Collections.Generic.HashSet<string>(new[] { UpdateConfiguration.PluginFileName, UpdateConfiguration.UpdaterFileName, "README.md" }, StringComparer.Ordinal);
+                var expected = new System.Collections.Generic.HashSet<string>(ExpectedPackageFiles, StringComparer.Ordinal);
                 if (archive.Entries.Count != expected.Count) throw new InvalidDataException("InvalidPackage");
+                long totalExpandedBytes = 0;
                 foreach (var entry in archive.Entries)
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
                     if (!expected.Remove(entry.FullName)) throw new InvalidDataException("InvalidPackage");
-                    if (entry.Length > 50L * 1024 * 1024) throw new InvalidDataException("Update package entry is too large.");
+                    if (entry.Length < 0 || entry.Length > MaximumPackageEntryBytes) throw new InvalidDataException("Update package entry is too large.");
+                    totalExpandedBytes += entry.Length;
+                    if (totalExpandedBytes > maximumExpandedBytes) throw new InvalidDataException("Update package expands beyond the allowed total size.");
+                }
+                if (expected.Count != 0) throw new InvalidDataException("InvalidPackage");
+                if (Directory.Exists(destinationRoot) && Directory.EnumerateFileSystemEntries(destinationRoot).Any()) throw new IOException("The extraction directory is not empty.");
+
+                cancellationToken.ThrowIfCancellationRequested();
+                Directory.CreateDirectory(destinationRoot);
+                long writtenTotal = 0;
+                foreach (var entry in archive.Entries)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
                     var destination = SafeDestination(destinationRoot, entry.FullName);
-                    if (string.IsNullOrEmpty(entry.Name)) { Directory.CreateDirectory(destination); continue; }
-                    Directory.CreateDirectory(Path.GetDirectoryName(destination));
-                    entry.ExtractToFile(destination, false);
+                    using (var input = entry.Open())
+                    using (var output = new FileStream(destination, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                    {
+                        var buffer = new byte[81920];
+                        long writtenEntry = 0;
+                        int read;
+                        while ((read = input.Read(buffer, 0, buffer.Length)) > 0)
+                        {
+                            cancellationToken.ThrowIfCancellationRequested();
+                            writtenEntry += read; writtenTotal += read;
+                            if (writtenEntry > MaximumPackageEntryBytes || writtenTotal > maximumExpandedBytes || writtenEntry > entry.Length)
+                                throw new InvalidDataException("Update package expands beyond the allowed total size.");
+                            output.Write(buffer, 0, read);
+                        }
+                        if (writtenEntry != entry.Length) throw new InvalidDataException("InvalidPackage");
+                    }
                 }
             }
         }
@@ -68,9 +105,6 @@ namespace ChatRelay
         {
             ValidateAssembly(dllPath, UpdateConfiguration.PluginAssemblyName, releaseVersion);
         }
-
-        public static void ValidateUpdaterAssembly(string updaterPath, SemVersion releaseVersion) =>
-            ValidateAssembly(updaterPath, UpdateConfiguration.UpdaterAssemblyName, releaseVersion);
 
         private static void ValidateAssembly(string path, string expectedName, SemVersion releaseVersion)
         {
@@ -86,3 +120,5 @@ namespace ChatRelay
         private static bool IsHex(char value) => (value >= '0' && value <= '9') || (value >= 'a' && value <= 'f') || (value >= 'A' && value <= 'F');
     }
 }
+
+

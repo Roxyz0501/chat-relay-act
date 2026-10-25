@@ -25,14 +25,14 @@ internal static partial class Program
         try
         {
             artifacts = Path.Combine(Environment.CurrentDirectory, "artifacts", "tests"); Directory.CreateDirectory(artifacts);
-            Parsing(); DiagnosticFiltering(); Persistence(); SettingsSaveScheduling(); Languages(); UpdateSafety(); Sending().GetAwaiter().GetResult(); ChannelSelection(); RenderSettings();
+            Parsing(); DiagnosticFiltering(); Persistence(); SettingsSaveScheduling(); Languages(); UpdateSafety(); UpdateLifecycle(); Sending().GetAwaiter().GetResult(); ChannelSelection(); RenderSettings();
             if (Environment.GetEnvironmentVariable("CHATRELAY_UPDATE_INTEGRATION") == "1")
             using (var service = new UpdateService())
             {
                 var result = service.CheckAsync(new Version(0,0,0), CancellationToken.None).GetAwaiter().GetResult();
                 Check(result.Status == UpdateCheckStatus.UpdateAvailable, "live release found");
                 var package = service.DownloadAndVerifyAsync(result.Release,CancellationToken.None).GetAwaiter().GetResult();
-                Check(File.Exists(package.StagedDllPath) && File.Exists(package.StagedUpdaterPath),"live package verified");
+                Check(File.Exists(package.StagedDllPath),"live package verified");
             }
             Console.WriteLine("PASS: " + assertions + " assertions"); return 0;
         }

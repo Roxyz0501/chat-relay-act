@@ -18,6 +18,7 @@ internal static partial class Program
         Throws(() => UpdatePackageVerifier.SafeDestination(artifacts, "../outside"), "Zip Slip rejected");
         var zip = Path.Combine(artifacts, "bad-" + Guid.NewGuid().ToString("N") + ".zip"); using (var z = ZipFile.Open(zip, ZipArchiveMode.Create)) z.CreateEntry("evil.exe");
         Throws(() => UpdatePackageVerifier.ExtractValidated(zip, Path.Combine(artifacts, "extract")), "unexpected asset rejected");
+        Throws(() => UpdatePackageVerifier.ExtractValidated(BuildTwoSmallEntries(), Path.Combine(artifacts, "size-check"), 2), "expanded aggregate limit enforced");
         var dll = typeof(PluginSettings).Assembly.Location;
         Check(UpdatePackageVerifier.VerifySha256(dll, UpdatePackageVerifier.ComputeSha256(dll)), "hash valid"); Check(!UpdatePackageVerifier.VerifySha256(dll, new string('0', 64)), "corrupt hash");
         var hash = UpdatePackageVerifier.ComputeSha256(dll); Check(UpdatePackageVerifier.FindManifestHash(hash + "  a.zip", "b.zip") == null, "manifest filename");
@@ -27,11 +28,16 @@ internal static partial class Program
         var registration = new ActPluginData { pluginObj = instance, pluginFile = new FileInfo(target) };
         Check(ChatRelayPlugin.ResolvePluginDllPath(new[] { registration }, instance) == target, "ACT registration priority");
         Throws(() => ChatRelayPlugin.ResolvePluginDllPath(null, instance), "missing ACT path stops update");
-        Directory.CreateDirectory(Path.GetDirectoryName(target)); File.WriteAllText(target, "previous");
-        Throws(() => ChatRelay.Updater.Program.ReplaceWithBackup(dll, target, hash, "1.0.0", (s, d) => { File.WriteAllText(d, "partial"); throw new IOException("failure"); }), "simulated copy failure");
-        Check(File.ReadAllText(target) == "previous", "rollback restores original");
-        ChatRelay.Updater.Program.ReplaceWithBackup(dll, target, hash, "1.0.0"); Check(UpdatePackageVerifier.VerifySha256(target, hash), "successful replacement");
         Check(!ReleaseParser.Summarize("**bold** `code`").Contains("**"), "release Markdown removed");
     }
-
+    private static string BuildTwoSmallEntries()
+    {
+        var path = Path.Combine(artifacts, "aggregate-" + Guid.NewGuid().ToString("N") + ".zip");
+        using (var zip = ZipFile.Open(path, ZipArchiveMode.Create))
+        {
+            using (var writer = new StreamWriter(zip.CreateEntry("ChatRelay.dll").Open())) writer.Write("abc");
+            using (var writer = new StreamWriter(zip.CreateEntry("README.md").Open())) writer.Write("def");
+        }
+        return path;
+    }
 }
