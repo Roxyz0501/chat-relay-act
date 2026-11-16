@@ -24,6 +24,11 @@ namespace ChatRelay
         private Label status;
         private string settingsPath;
         private RelaySender sender;
+        private readonly PlayerDirectory players = new PlayerDirectory();
+        private Dictionary<int,string> routes = new Dictionary<int,string>();
+        private string defaultChannel, homeWorld;
+        private bool botMode, playerIcons;
+        private string routeNotice;
         private HashSet<int> selected = new HashSet<int>();
         private bool forwarding, includeNames, stopped, checking, preparing;
         private string relayLanguage;
@@ -44,6 +49,7 @@ namespace ChatRelay
             control = new SettingsControl(settings); page.Text = "Chat Relay"; page.Controls.Add(control);
             control.SettingsChanged += SettingsChanged;
             control.TestRequested += Test;
+            control.TestRouteRequested += TestRoute;
             control.CheckUpdatesRequested += delegate { StartCheckUpdates(true); };
             control.InstallUpdateRequested += Install;
             control.LaterRequested += delegate { if (lastUpdate?.Release == null) return; settings.SkippedVersion = lastUpdate.Release.Version.ToString(); control.ShowUpdateSkipped(settings.SkippedVersion); };
@@ -66,7 +72,16 @@ namespace ChatRelay
                 if (stopped) return;
                 old = sender; sender = null;
                 forwarding = settings.Enabled; includeNames = settings.IncludeNames; selected = new HashSet<int>(settings.Channels); relayLanguage = settings.Language;
-                Uri endpoint; if (RelaySender.TryEndpoint(settings.ReadWebhook(), out endpoint)) sender = new RelaySender(endpoint);
+                botMode = settings.BotMode; playerIcons = settings.PlayerIcons; homeWorld = settings.HomeWorld;
+                defaultChannel = settings.DefaultChannelId; routeNotice = null;
+                routes = (settings.Routes ?? new ChannelRoute[0]).Where(r => r != null && ChatParser.IsSupported(r.Kind))
+                    .GroupBy(r => r.Kind).ToDictionary(g => g.Key, g => g.Last().ChannelId);
+                if (botMode)
+                {
+                    var token = settings.ReadBotToken();
+                    if (!string.IsNullOrEmpty(token)) sender = new RelaySender(null, botToken: token);
+                }
+                else if (RelaySender.TryEndpoint(settings.ReadWebhook(), out Uri endpoint)) sender = new RelaySender(endpoint);
             }
             old?.Stop();
             RefreshStatus(null, EventArgs.Empty);
@@ -77,20 +92,39 @@ namespace ChatRelay
             if (isImport || args == null) return;
             lock (gate)
             {
-                if (stopped || !forwarding || sender == null) return;
+                if (stopped) return;
+                players.Observe(args.originalLogLine ?? args.logLine);
+                if (!forwarding || sender == null) return;
                 ChatMessage message;
                 if (!ChatParser.TryParseEvent(isImport, args.originalLogLine, args.logLine, out message)) return;
-                if (selected.Contains(message.Channel)) sender.Enqueue(ChatParser.Format(message, relayLanguage, includeNames));
+                if (!selected.Contains(message.Channel)) return;
+                var destination = Route(message.Channel);
+                if (botMode && !BotWebhooks.IsChannelId(destination)) { routeNotice = "InvalidChannel"; return; }
+                var actor = botMode && playerIcons && includeNames ? players.Resolve(message, homeWorld, ActGlobals.charName) : null;
+                // Outgoing tells have the recipient in the sender column. Keep it in the text.
+                sender.Enqueue(ChatParser.Format(message, relayLanguage, includeNames && (actor == null || message.Channel == 12)),
+                    destination, actor);
+                routeNotice = null;
             }
         }
-        private void Test(object source, EventArgs e)
+        private string Route(int kind) => routes.TryGetValue(kind, out string id) ? id : defaultChannel;
+        private void Test(object source, EventArgs e) => EnqueueTest(-1, false);
+        private void TestRoute(int kind) => EnqueueTest(kind, true);
+        private void EnqueueTest(int kind, bool requireBot)
         {
-            lock (gate) { if (sender == null) { control.SetRelayStatus("InvalidWebhook",0,0); return; } sender.Enqueue(T("TestMessage")); }
+            lock (gate)
+            {
+                var destination = Route(kind);
+                routeNotice = requireBot && !botMode ? "BotSetup" : sender == null ? (botMode ? "BotSetup" : "InvalidWebhook") :
+                    botMode && !BotWebhooks.IsChannelId(destination) ? "InvalidChannel" : null;
+                if (routeNotice == null) sender.Enqueue(T("TestMessage"), destination);
+            }
+            RefreshStatus(null, EventArgs.Empty);
         }
         private void RefreshStatus(object source, EventArgs e)
         {
             if (control == null || control.IsDisposed || stopped) return;
-            lock (gate) control.SetRelayStatus(sender == null ? (forwarding ? "InvalidWebhook" : "Disabled") : !forwarding && sender.Sent == 0 && sender.Dropped == 0 ? "Disabled" : sender.StatusKey, sender?.Sent ?? 0, sender?.Dropped ?? 0);
+            lock (gate) control.SetRelayStatus(routeNotice ?? (sender == null ? (forwarding ? (botMode ? "BotSetup" : "InvalidWebhook") : "Disabled") : !forwarding && sender.Sent == 0 && sender.Dropped == 0 ? "Disabled" : sender.StatusKey), sender?.Sent ?? 0, sender?.Dropped ?? 0);
         }
 
         private void StartCheckUpdates(bool manual)
@@ -200,6 +234,7 @@ namespace ChatRelay
             try { saveCoordinator?.Flush(); } catch { saveFailed = true; }
             control.SettingsChanged -= SettingsChanged;
             control.TestRequested -= Test;
+            control.TestRouteRequested -= TestRoute;
             updates.Dispose(); cancellation.Dispose();
             control?.Dispose();
             if (status != null) status.Text = T(saveFailed ? "SaveFailed" : "Stopped");

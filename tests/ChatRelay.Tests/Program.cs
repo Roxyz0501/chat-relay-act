@@ -25,7 +25,7 @@ internal static partial class Program
         try
         {
             artifacts = Path.Combine(Environment.CurrentDirectory, "artifacts", "tests"); Directory.CreateDirectory(artifacts);
-            Parsing(); DiagnosticFiltering(); Persistence(); SettingsSaveScheduling(); Languages(); UpdateSafety(); UpdateLifecycle(); Sending().GetAwaiter().GetResult(); ChannelSelection(); RenderSettings();
+            Parsing(); DiagnosticFiltering(); Persistence(); SettingsSaveScheduling(); Languages(); UpdateSafety(); UpdateLifecycle(); Sending().GetAwaiter().GetResult(); BotRelayTests().GetAwaiter().GetResult(); ChannelSelection(); RenderSettings();
             if (Environment.GetEnvironmentVariable("CHATRELAY_UPDATE_INTEGRATION") == "1")
             using (var service = new UpdateService())
             {
@@ -140,13 +140,13 @@ internal static partial class Program
         using(var control=new SettingsControl(new PluginSettings{Language=lang,CheckUpdatesOnStartup=false,Channels=new[]{14,24,37,56,57}}))
         {
             form.Controls.Add(control); form.Show(); Application.DoEvents(); form.PerformLayout();
-            var tabs=FindTabs(control); Check(tabs.TabCount==4,"four tabs");
-            for(int i=0;i<4;i++){tabs.SelectedIndex=i;Application.DoEvents();control.PerformLayout();using(var bitmap=new Bitmap(820,760)){control.DrawToBitmap(bitmap,new Rectangle(0,0,820,760));bitmap.Save(Path.Combine(artifacts,"settings-"+lang+"-"+i+".png"));}}
+            var tabs=FindTabs(control); Check(tabs.TabCount==5,"five tabs");
+            for(int i=0;i<tabs.TabCount;i++){tabs.SelectedIndex=i;Application.DoEvents();control.PerformLayout();using(var bitmap=new Bitmap(820,760)){control.DrawToBitmap(bitmap,new Rectangle(0,0,820,760));bitmap.Save(Path.Combine(artifacts,"settings-"+lang+"-"+i+".png"));}}
             form.ClientSize=new Size(420,560); form.PerformLayout(); Check(control.Width<=420,"narrow pane");
             tabs.SelectedIndex=1;Application.DoEvents();
             foreach(var checkbox in Descendants(control).OfType<CheckBox>().Where(x=>x.Name.StartsWith("Channel"))) Check(checkbox.Height>=checkbox.Font.Height+12 && checkbox.Right<=checkbox.Parent.ClientSize.Width,"channel fits narrow card");
             var combo=Descendants(control).OfType<ComboBox>().Single(); combo.SelectedIndex=(combo.SelectedIndex+1)%4;
-            Check(tabs.TabPages[3].Text==Localization.Get(combo.SelectedIndex==0?"en":combo.SelectedIndex==1?"ja":combo.SelectedIndex==2?"zh-CN":"ko","Support"),"live language change");
+            Check(tabs.TabPages[4].Text==Localization.Get(combo.SelectedIndex==0?"en":combo.SelectedIndex==1?"ja":combo.SelectedIndex==2?"zh-CN":"ko","Support"),"live language change");
             tabs.SelectedIndex=1; Application.DoEvents();
             using(var bitmap=new Bitmap(420,560)){control.DrawToBitmap(bitmap,new Rectangle(0,0,420,560));bitmap.Save(Path.Combine(artifacts,"channels-narrow-"+lang+".png"));}
             control.Scale(new SizeF(1.5f,1.5f)); Check(control.IsDisposed==false,"DPI scaling");

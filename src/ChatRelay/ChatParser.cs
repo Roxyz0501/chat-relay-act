@@ -9,7 +9,7 @@ namespace ChatRelay
     internal sealed class ChatMessage { public int Channel; public string Sender; public string Text; }
     internal static class ChatParser
     {
-        internal static readonly int[] Channels = new[] { 10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,27,30,32,36,37,101,102,103,104,105,106,107,56,57,58,60 };
+        internal static readonly int[] Channels = new[] { 10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,27,28,29,30,32,36,37,101,102,103,104,105,106,107,56,57,58,60 };
         internal static bool IsSupported(int channel) => Channels.Contains(channel);
         internal static string ChannelKey(int channel) => channel >= 16 && channel <= 23 ? "LS " + (channel - 15) : channel >= 101 && channel <= 107 ? "CWLS " + (channel - 99) : channel == 37 ? "CWLS 1" : "Channel" + channel;
         internal static bool TryParse(string line, out ChatMessage message)

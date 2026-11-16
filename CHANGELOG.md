@@ -1,5 +1,11 @@
 # Release notes
 
+## v1.2.0
+
+- Added Discord bot setup, a common destination and per-chat-type channel overrides.
+- Added custom and standard emotes and optional Lodestone speaker portraits.
+- Existing configurations keep single-webhook mode and their selected chat types.
+
 ## v1.1.2
 
 - Remove the background updater process. Updates are verified and staged; users copy the DLL after closing ACT.

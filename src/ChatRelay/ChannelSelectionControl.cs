@@ -26,7 +26,7 @@ namespace ChatRelay
             Dock = DockStyle.Fill; BackColor = Color.FromArgb(244,247,251); Font = new Font("Yu Gothic UI",9f);
             toolbar.Controls.AddRange(new Control[]{allOn,allOff,summary});
             content.Controls.Add(description);scroll.Controls.Add(content);Controls.Add(scroll);Controls.Add(toolbar);
-            AddGroup("GroupNearby",new[]{10,11,30});
+            AddGroup("GroupNearby",new[]{10,11,30,28,29});
             AddGroup("GroupParty",new[]{12,13,14,15,32,36});
             AddGroup("GroupCommunity",new[]{24,27});
             AddGroup("GroupLS",Enumerable.Range(16,8).ToArray());

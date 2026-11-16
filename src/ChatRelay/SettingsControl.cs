@@ -15,6 +15,9 @@ namespace ChatRelay
         private readonly TabPage settingsTab = new TabPage(), updateTab = new TabPage(), supportTab = new TabPage();
         private readonly TextBox webhook = new TextBox { UseSystemPasswordChar = true, Dock = DockStyle.Fill, MaxLength = 300 };
         private readonly ChannelSelectionControl channels;
+        private readonly TabPage botTab = new TabPage();
+        private readonly BotSettingsControl botSettings;
+        internal event Action<int> TestRouteRequested;
         private readonly TabPage channelsTab = new TabPage();
         private readonly Button saveWebhook = new Button { AutoSize = true }, testButton = new Button { AutoSize = true };
         private readonly Label webhookLabel = L(), relayStatus = L();
@@ -47,9 +50,12 @@ namespace ChatRelay
             enabled.Checked = settings.Enabled; includeNames.Checked = settings.IncludeNames; checkUpdates.Checked = settings.CheckUpdatesOnStartup;
             webhook.Text = settings.ReadWebhook();
             channels = new ChannelSelectionControl(settings.Channels); channelsTab.Controls.Add(channels);
+            botSettings = new BotSettingsControl(settings); botTab.Controls.Add(botSettings);
+            botSettings.Applied += Changed;
+            botSettings.TestRoute += kind => TestRouteRequested?.Invoke(kind);
             var header = BuildHeader(); ConfigureTabs();
             settingsTab.Controls.Add(BuildSettingsLayout()); updateTab.Controls.Add(BuildUpdateLayout()); supportTab.Controls.Add(BuildSupportLayout());
-            tabs.TabPages.Add(settingsTab); tabs.TabPages.Add(channelsTab); tabs.TabPages.Add(updateTab); tabs.TabPages.Add(supportTab);
+            tabs.TabPages.Add(settingsTab); tabs.TabPages.Add(channelsTab); tabs.TabPages.Add(botTab); tabs.TabPages.Add(updateTab); tabs.TabPages.Add(supportTab);
             var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2, BackColor = BackColor };
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 76)); root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             root.Controls.Add(header, 0, 0); root.Controls.Add(tabs, 0, 1); Controls.Add(root);
@@ -138,7 +144,7 @@ namespace ChatRelay
             value.Language = CurrentLanguage; value.Enabled = enabled.Checked; value.IncludeNames = includeNames.Checked; value.CheckUpdatesOnStartup = checkUpdates.Checked;
             value.Channels = channels.SelectedChannels; value.Normalize();
         }
-        internal void SetRelayStatus(string key,int sent,int dropped) { relayKey = key; sentCount=sent; droppedCount=dropped; relayStatus.Text = T(key) + "\r\n" + T("Counts",sent,dropped); }
+        internal void SetRelayStatus(string key,int sent,int dropped) { relayKey = key; sentCount=sent; droppedCount=dropped; relayStatus.Text = T(key) + "\r\n" + T("Counts",sent,dropped); botSettings.SetStatus(relayStatus.Text); }
 
         internal void SetUpdateChecking() { AvailableRelease = null; checkButton.Enabled = false; updateButton.Enabled = laterButton.Enabled = false; latestValue.Text = "—"; releaseNotes.Clear(); updateStatus.ForeColor = Color.FromArgb(73, 96, 128); SetUpdateMessage("Checking"); }
         internal void SetPreparedUpdate(string stagedDll, string targetDll)
@@ -168,6 +174,7 @@ namespace ChatRelay
             tabs.Font = new Font(family, 9f, FontStyle.Bold); settingsTab.Text = T("Settings"); updateTab.Text = T("Updates"); supportTab.Text = T("Support");
             languageLabel.Text=T("Language"); enabled.Text=T("Enabled"); includeNames.Text=T("IncludeNames"); webhookLabel.Text=T("Webhook"); saveWebhook.Text=T("SaveWebhook"); testButton.Text=T("Test"); hint.Text=T("Hint");
             loading = true;
+            botTab.Text=T("Bot"); botSettings.ApplyLanguage(CurrentLanguage);
             channelsTab.Text=T("Channels"); channels.ApplyLanguage(CurrentLanguage);
             loading = false; SetRelayStatus(relayKey,sentCount,droppedCount);
             updateTitle.Text = T("UpdateTitle"); updateTitle.Font = new Font(family, 16f, FontStyle.Bold); updateDescription.Text = T("UpdateDescription"); checkUpdates.Text = T("CheckStartup"); checkButton.Text = T("CheckNow"); currentCaption.Text = T("CurrentVersion"); latestCaption.Text = T("LatestVersion"); releaseCaption.Text = T("ReleaseNotes"); updateButton.Text = T("UpdateNow"); laterButton.Text = T("Later");
