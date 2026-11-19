@@ -141,15 +141,29 @@ internal static partial class Program
         using(var control=new SettingsControl(new PluginSettings{Language=lang,CheckUpdatesOnStartup=false,Channels=new[]{14,24,37,56,57}}))
         {
             form.Controls.Add(control); form.Show(); Application.DoEvents(); form.PerformLayout();
-            var tabs=FindTabs(control); Check(tabs.TabCount==5,"five tabs");
+            var tabs=FindTabs(control); Check(tabs.TabCount==6,"six tabs");
             for(int i=0;i<tabs.TabCount;i++){tabs.SelectedIndex=i;Application.DoEvents();control.PerformLayout();using(var bitmap=new Bitmap(820,760)){control.DrawToBitmap(bitmap,new Rectangle(0,0,820,760));bitmap.Save(Path.Combine(artifacts,"settings-"+lang+"-"+i+".png"));}}
             form.ClientSize=new Size(420,560); form.PerformLayout(); Check(control.Width<=420,"narrow pane");
             tabs.SelectedIndex=1;Application.DoEvents();
             foreach(var checkbox in Descendants(control).OfType<CheckBox>().Where(x=>x.Name.StartsWith("Channel"))) Check(checkbox.Height>=checkbox.Font.Height+12 && checkbox.Right<=checkbox.Parent.ClientSize.Width,"channel fits narrow card");
             var combo=Descendants(control).OfType<ComboBox>().Single(); combo.SelectedIndex=(combo.SelectedIndex+1)%4;
-            Check(tabs.TabPages[4].Text==Localization.Get(combo.SelectedIndex==0?"en":combo.SelectedIndex==1?"ja":combo.SelectedIndex==2?"zh-CN":"ko","Support"),"live language change");
+            Check(tabs.TabPages[5].Text==Localization.Get(combo.SelectedIndex==0?"en":combo.SelectedIndex==1?"ja":combo.SelectedIndex==2?"zh-CN":"ko","Support"),"live language change");
             tabs.SelectedIndex=1; Application.DoEvents();
             using(var bitmap=new Bitmap(420,560)){control.DrawToBitmap(bitmap,new Rectangle(0,0,420,560));bitmap.Save(Path.Combine(artifacts,"channels-narrow-"+lang+".png"));}
+            var savedCode = control.CurrentLanguage;
+            var extra = new TabPage("Extra");
+            ((Roxyz.Act.UI.PluginTabs)tabs).AddContentPage(extra);
+            Check(tabs.TabPages[tabs.TabCount-1].Text==Localization.Get(savedCode,"Support"),"support stays last");
+            tabs.TabPages.Remove(extra); extra.Dispose();
+            foreach(var code in new[]{"ja","ja","en","zh-CN","ko","ja"}) {
+                control.SetHostedLanguage(code);
+                Check(control.CurrentLanguage==code && tabs.TabCount==3,"hosted language and hidden tabs");
+                using(var bmp=new Bitmap(420,560)) control.DrawToBitmap(bmp,new Rectangle(0,0,420,560));
+            }
+            var persisted=new PluginSettings{Language=savedCode};
+            control.ApplyTo(persisted);
+            using(var standalone=new SettingsControl(persisted))
+                Check(standalone.CurrentLanguage==savedCode && FindTabs(standalone).TabCount==6,"standalone language restored");
             control.Scale(new SizeF(1.5f,1.5f)); Check(control.IsDisposed==false,"DPI scaling");
             foreach(var checkbox in Descendants(control).OfType<CheckBox>().Where(x=>x.Name.StartsWith("Channel"))) Check(checkbox.Height>=checkbox.Font.Height+12,"scaled channel height");
         }

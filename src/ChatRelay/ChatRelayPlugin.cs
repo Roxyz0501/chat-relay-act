@@ -62,7 +62,14 @@ namespace ChatRelay
             if (settings.CheckUpdatesOnStartup) StartCheckUpdates(false);
         }
 
-        private string T(string key, params object[] args) => Localization.Get(settings?.Language ?? "en", key, args);
+        public void SetHostedLanguage(string code)
+        {
+            if (control == null || stopped) return;
+            control.SetHostedLanguage(code);
+            lock (gate) relayLanguage = control?.CurrentLanguage ?? settings.Language;
+            if (status != null) status.Text = T("Started");
+        }
+        private string T(string key, params object[] args) => Localization.Get(control?.CurrentLanguage ?? settings?.Language ?? "en", key, args);
         private void SaveSettings(object source, EventArgs e) { try { saveCoordinator?.Poll(DateTime.UtcNow); } catch { if (!stopped && status != null) status.Text = T("SaveFailed"); } }
         private void SettingsChanged(object source, EventArgs e) { if (!stopped) Configure(); }
         private void Configure()
@@ -72,7 +79,7 @@ namespace ChatRelay
             {
                 if (stopped) return;
                 old = sender; sender = null;
-                forwarding = settings.Enabled; includeNames = settings.IncludeNames; selected = new HashSet<int>(settings.Channels); relayLanguage = settings.Language;
+                forwarding = settings.Enabled; includeNames = settings.IncludeNames; selected = new HashSet<int>(settings.Channels); relayLanguage = control?.CurrentLanguage ?? settings.Language;
                 botMode = settings.BotMode; playerIcons = settings.PlayerIcons; homeWorld = settings.HomeWorld;
                 defaultChannel = settings.DefaultChannelId; routeNotice = null;
                 routes = (settings.Routes ?? new ChannelRoute[0]).Where(r => r != null && ChatParser.IsSupported(r.Kind))

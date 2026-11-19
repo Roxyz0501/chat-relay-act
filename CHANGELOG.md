@@ -1,5 +1,9 @@
 # Release notes
 
+## v1.4.0
+
+- Added the shared language and update pages and portal language synchronization. Standalone language preferences are preserved.
+
 ## v1.3.0
 
 - Use the shared `PluginTabs.cs` source for every settings tab, with natural tab widths and shared hover/selection drawing.
