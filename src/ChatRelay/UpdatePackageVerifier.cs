@@ -14,7 +14,7 @@ namespace ChatRelay
     {
         internal const long MaximumPackageEntryBytes = 50L * 1024 * 1024;
         internal const long MaximumPackageExpandedBytes = 60L * 1024 * 1024;
-        private static readonly string[] ExpectedPackageFiles = { UpdateConfiguration.PluginFileName, "README.md" };
+        private static readonly string[] ExpectedPackageFiles = { UpdateConfiguration.PluginFileName, UpdateConfiguration.UpdaterFileName, "README.md" };
 
         public static string ComputeSha256(string path)
         {
@@ -104,6 +104,11 @@ namespace ChatRelay
         public static void ValidatePluginAssembly(string dllPath, SemVersion releaseVersion)
         {
             ValidateAssembly(dllPath, UpdateConfiguration.PluginAssemblyName, releaseVersion);
+        }
+
+        public static void ValidateUpdaterAssembly(string path, SemVersion releaseVersion)
+        {
+            ValidateAssembly(path, UpdateConfiguration.UpdaterAssemblyName, releaseVersion);
         }
 
         private static void ValidateAssembly(string path, string expectedName, SemVersion releaseVersion)

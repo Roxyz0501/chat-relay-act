@@ -25,7 +25,7 @@ internal static partial class Program
         try
         {
             artifacts = Path.Combine(Environment.CurrentDirectory, "artifacts", "tests"); Directory.CreateDirectory(artifacts);
-            Parsing(); DiagnosticFiltering(); Persistence(); SettingsSaveScheduling(); Languages(); UpdateSafety(); UpdateLifecycle(); Sending().GetAwaiter().GetResult(); BotRelayTests().GetAwaiter().GetResult(); ChannelSelection(); RenderSettings();
+            Parsing(); DiagnosticFiltering(); Persistence(); SettingsSaveScheduling(); Languages(); UpdateSafety(); UpdateApiEfficiency(); UpdateLifecycle(); Sending().GetAwaiter().GetResult(); BotRelayTests().GetAwaiter().GetResult(); ChannelSelection(); RenderSettings();
             if (Environment.GetEnvironmentVariable("CHATRELAY_UPDATE_INTEGRATION") == "1")
             using (var service = new UpdateService())
             {
@@ -97,6 +97,7 @@ internal static partial class Program
         foreach(var lang in new[]{"en","ja","zh-CN","ko"})
         {
             foreach(var key in new[]{"Enabled","IncludeNames","Channels","InvalidWebhook","SupportHeading","Updates","Prepared","Counts","SendFailed"}) Check(Localization.Get(lang,key)!=key,"translation "+lang+key);
+            foreach(var key in new[]{"AuthorVersion","UpdateAvailableRateLimited","UpdateRateLimited","CheckFailed"}) Check(Localization.Get(lang,key)!=key,"update translation "+lang+key);
             Check(Localization.Get(lang,"FallbackProbe")=="English fallback","missing-key fallback "+lang);
         }
     }

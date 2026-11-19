@@ -13,11 +13,13 @@ Push-Location $PSScriptRoot
 try { & $testExe } finally { Pop-Location }
 if ($LASTEXITCODE -ne 0) { throw "Tests failed." }
 $dll = Join-Path $PSScriptRoot "src\ChatRelay\bin\$Configuration\net48\ChatRelay.dll"
+$updater = Join-Path $PSScriptRoot "src\ChatRelay.Updater\bin\$Configuration\net48\ChatRelay.Updater.exe"
 $version = [Reflection.AssemblyName]::GetAssemblyName($dll).Version.ToString(3)
 $dist = Join-Path $PSScriptRoot "dist"; $stage = Join-Path $dist "package"
 if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $stage | Out-Null
 Copy-Item -LiteralPath $dll -Destination (Join-Path $stage "ChatRelay.dll") -Force
+Copy-Item -LiteralPath $updater -Destination (Join-Path $stage "ChatRelay.Updater.exe") -Force
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot "README.md") -Destination (Join-Path $stage "README.md") -Force
 $zipName = "ChatRelay-v$version.zip"; $zip = Join-Path $dist $zipName
 Compress-Archive -Path (Join-Path $stage "*") -DestinationPath $zip -Force

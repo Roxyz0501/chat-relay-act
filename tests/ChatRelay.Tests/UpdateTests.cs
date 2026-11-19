@@ -28,6 +28,13 @@ internal static partial class Program
         var registration = new ActPluginData { pluginObj = instance, pluginFile = new FileInfo(target) };
         Check(ChatRelayPlugin.ResolvePluginDllPath(new[] { registration }, instance) == target, "ACT registration priority");
         Throws(() => ChatRelayPlugin.ResolvePluginDllPath(null, instance), "missing ACT path stops update");
+        var replacement = Path.Combine(artifacts, "automatic-" + Guid.NewGuid().ToString("N"), "ChatRelay.dll"); Directory.CreateDirectory(Path.GetDirectoryName(replacement)); File.WriteAllText(replacement, "previous");
+        Throws(() => ChatRelay.Updater.Program.ReplaceWithBackup(dll, replacement, hash, "1.3.0", (incoming, destination) => { File.WriteAllText(destination, "partial"); throw new IOException("simulated copy failure"); }), "updater simulated install failure");
+        Check(File.ReadAllText(replacement) == "previous", "updater rollback restores original");
+        ChatRelay.Updater.Program.ReplaceWithBackup(dll, replacement, hash, "1.3.0");
+        Check(UpdatePackageVerifier.VerifySha256(replacement, hash), "updater installs verified DLL");
+        Check(Directory.GetFiles(Path.GetDirectoryName(replacement), "ChatRelay.dll.backup-*").Length == 2, "updater keeps rollback and replacement backups");
+        Throws(() => ChatRelay.Updater.Program.ValidatePaths(dll, replacement + ".txt"), "updater rejects wrong destination filename");
         Check(!ReleaseParser.Summarize("**bold** `code`").Contains("**"), "release Markdown removed");
     }
     private static string BuildTwoSmallEntries()
@@ -36,6 +43,7 @@ internal static partial class Program
         using (var zip = ZipFile.Open(path, ZipArchiveMode.Create))
         {
             using (var writer = new StreamWriter(zip.CreateEntry("ChatRelay.dll").Open())) writer.Write("abc");
+            using (var writer = new StreamWriter(zip.CreateEntry("ChatRelay.Updater.exe").Open())) writer.Write("ghi");
             using (var writer = new StreamWriter(zip.CreateEntry("README.md").Open())) writer.Write("def");
         }
         return path;

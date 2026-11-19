@@ -15,10 +15,11 @@ namespace ChatRelay
         public SemVersion Version { get; set; }
         public string Name { get; set; }
         public string Notes { get; set; }
+        public bool ApiLimited { get; set; }
         public List<ReleaseAsset> Assets { get; set; } = new List<ReleaseAsset>();
     }
 
-    internal enum UpdateCheckStatus { RepositoryNotConfigured, UpToDate, UpdateAvailable, NoStableRelease, Failed }
+    internal enum UpdateCheckStatus { RepositoryNotConfigured, UpToDate, UpdateAvailable, NoStableRelease, RateLimited, Failed }
 
     internal sealed class UpdateCheckResult
     {
@@ -30,6 +31,7 @@ namespace ChatRelay
     internal sealed class PreparedUpdate
     {
         public string StagedDllPath { get; set; }
+        public string StagedUpdaterPath { get; set; }
         public string PreparedDirectory { get; set; }
         public string DllSha256 { get; set; }
         public ReleaseInfo Release { get; set; }

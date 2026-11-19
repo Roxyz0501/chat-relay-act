@@ -11,8 +11,8 @@ $archive = [IO.Compression.ZipFile]::OpenRead($zipFile.FullName)
 $stage = Join-Path $PSScriptRoot ('artifacts/verify-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $stage -Force | Out-Null
 try {
-    $expected = @('ChatRelay.dll', 'README.md')
-    if ($archive.Entries.Count -ne 2) { throw 'Unexpected package count.' }
+    $expected = @('ChatRelay.dll', 'ChatRelay.Updater.exe', 'README.md')
+    if ($archive.Entries.Count -ne 3) { throw 'Unexpected package count.' }
     $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
     foreach ($entry in $archive.Entries) {
         if ($entry.FullName -cnotin $expected -or -not $seen.Add($entry.FullName) -or $entry.Length -gt 50MB) { throw 'Unexpected ZIP entry.' }
@@ -20,7 +20,8 @@ try {
         [IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $destination)
         if ($entry.Name -ne 'README.md') {
             $assembly = [Reflection.AssemblyName]::GetAssemblyName($destination)
-            if ($assembly.Name -cne [IO.Path]::GetFileNameWithoutExtension($entry.Name) -or $assembly.Version.ToString(3) -cne $Version) { throw 'Assembly identity/version mismatch.' }
+            $expectedAssembly = [IO.Path]::GetFileNameWithoutExtension($entry.Name)
+            if ($assembly.Name -cne $expectedAssembly -or $assembly.Version.ToString(3) -cne $Version) { throw 'Assembly identity/version mismatch.' }
             if ([Diagnostics.FileVersionInfo]::GetVersionInfo($destination).CompanyName -cne 'Roxyz0501') { throw 'Company mismatch.' }
         }
     }

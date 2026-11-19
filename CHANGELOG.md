@@ -1,5 +1,12 @@
 # Release notes
 
+## v1.3.0
+
+- Use the shared `PluginTabs.cs` source for every settings tab, with natural tab widths and shared hover/selection drawing.
+- Move author, installed version, and the repository link to the Update tab.
+- Restore automatic post-ACT-exit installation through a verified bundled updater, with the registered plugin path, original-file hash check, backup, rollback, and bounded archive extraction.
+- Add updater rollback and path validation tests; keep the update UI localized in four languages.
+
 ## v1.2.0
 
 - Added Discord bot setup, a common destination and per-chat-type channel overrides.

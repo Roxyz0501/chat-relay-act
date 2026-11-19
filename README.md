@@ -58,12 +58,12 @@ WebhookはWindows DPAPI（現在のWindowsユーザー）で暗号化してACT�
 
 ## 安全な更新
 
-専用の「更新」タブで現在版、最新版、状態、更新内容を確認できます。起動時確認は既定ONで無効化可能です。「今すぐ確認」「更新をダウンロードして準備」「後で」を用意しています。
+専用の「更新」タブで現在版、最新版、状態、更新内容を確認できます。起動時確認は既定ONで無効化可能です。「今すぐ確認」「更新する」「後で」を用意しています。更新タブには作者、現在版、GitHubリポジトリへのリンクも表示します。
 公開GitHub Releasesの安定版のみをSemVerで比較します。GitHubトークンは不要です。通常機能は更新確認失敗時も継続します。
 
-利用者が更新を選んだ場合だけダウンロードします。HTTPS・GitHubホスト・リリースパス・asset名・SHA-256・ZIP内容・DLLのアセンブリ名／会社名／バージョンを検証します。ZIPのディレクトリ逸脱と想定外ファイルを拒否し、展開サイズは1ファイル50 MiB、合計60 MiB以下に制限します。検証済みパッケージはユーザーのローカルデータ領域に保管し、同じ版は再利用します。
+利用者が更新を選んだ場合だけダウンロードします。HTTPS・GitHubホスト・リリースパス・asset名・SHA-256・ZIP内容・DLLとUpdaterのアセンブリ名／会社名／バージョンを検証します。ZIPのディレクトリ逸脱と想定外ファイルを拒否し、展開サイズは1ファイル50 MiB、合計60 MiB以下に制限します。検証済みパッケージはユーザーのローカルデータ領域に保管し、同じ版は再利用します。
 更新先はACTのプラグイン登録情報から取得し、取得不能時は更新を中止します。shadow copyの場所へ上書きしません。
-Updaterプロセスは起動しません。準備完了後にコピー元と導入先を表示します。ACTを完全に終了してから、表示されたDLLを導入先へ手動コピーし、ACTを再起動してください。
+検証済みDLLとUpdaterを準備し、ACT終了後にUpdaterが登録先DLLを自動置換します。更新前に現行DLLのバックアップを作成し、置換失敗時は復元します。ACT終了後にUpdaterは終了します。適用後にACTを再起動してください。
 
 ## 開発・Release
 
@@ -81,13 +81,12 @@ $env:CHATRELAY_UPDATE_INTEGRATION = '1'
 ./tests/ChatRelay.Tests/bin/Release/net48/ChatRelay.Tests.exe
 ```
 
-プラグインcsprojのVersionを更新し、ビルド成功後に `vX.Y.Z` タグをpushしてください。GitHub ActionsがACT公式配布をビルド依存として取得し、ビルド・テスト・配布物検証を行います。成功時のみ安定版Releaseを公開します。外部ActionはコミットSHA固定です。
+プラグインとUpdaterのcsprojのVersionを揃えて更新し、ビルド成功後に `vX.Y.Z` タグをpushしてください。GitHub ActionsがACT公式配布をビルド依存として取得し、ビルド・テスト・配布物検証を行います。成功時のみ安定版Releaseを公開します。外部ActionはコミットSHA固定です。
 
 必須assets: `ChatRelay-vX.Y.Z.zip`、`ChatRelay-vX.Y.Z.sha256`。
 マニフェストは `64桁SHA-256  ChatRelay-vX.Y.Z.zip` の形式です。
-ZIP直下には `ChatRelay.dll` と `README.md` の2ファイルだけを含めます。ACT本体・ログ・Config・資格情報は含めません。
+ZIP直下には `ChatRelay.dll`、`ChatRelay.Updater.exe`、`README.md` の3ファイルだけを含めます。ACT本体・ログ・Config・資格情報は含めません。
 
 仕様参照: [Discord Webhook](https://discord.com/developers/docs/resources/webhook)、[Discord rate limits](https://discord.com/developers/docs/topics/rate-limits)、[cactbot LogGuide](https://github.com/OverlayPlugin/cactbot/blob/main/docs/LogGuide.md)、[Dalamud chat type definitions](https://github.com/goatcorp/Dalamud/blob/master/Dalamud/Game/Text/XivChatType.cs)。
 
 ライセンスは未指定です。
-

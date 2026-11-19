@@ -5,8 +5,8 @@
     <LangVersion>7.3</LangVersion>
     <AssemblyName>ChatRelay</AssemblyName>
     <RootNamespace>ChatRelay</RootNamespace>
-    <Version>1.2.0</Version>
-    <Authors>Roxyz0501</Authors>
+    <Version>1.3.0</Version>
+<Authors>Roxyz0501</Authors>
     <Company>Roxyz0501</Company>
     <Product>Chat Relay for ACT</Product>
     <Description>Selected FFXIV chat forwarding to Discord webhooks for ACT.</Description>

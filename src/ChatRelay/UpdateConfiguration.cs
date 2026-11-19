@@ -8,6 +8,8 @@ namespace ChatRelay
         public const string RepositoryName = "chat-relay-act";
         public const string PluginAssemblyName = "ChatRelay";
         public const string PluginFileName = "ChatRelay.dll";
+        public const string UpdaterAssemblyName = "ChatRelay.Updater";
+        public const string UpdaterFileName = "ChatRelay.Updater.exe";
 
         public static bool IsConfigured => IsSafeSegment(RepositoryOwner) && IsSafeSegment(RepositoryName);
 

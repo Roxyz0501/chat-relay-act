@@ -9,6 +9,14 @@ namespace ChatRelay
 {
     internal static class ReleaseParser
     {
+        public static ReleaseInfo ParseStableRelease(string json)
+        {
+            var serializer = new JavaScriptSerializer { MaxJsonLength = 2 * 1024 * 1024 };
+            var item = serializer.DeserializeObject(json) as Dictionary<string, object>;
+            if (item == null || Bool(item, "draft") || Bool(item, "prerelease")) return null;
+            return ParseStableReleases(serializer.Serialize(new object[] { item })).FirstOrDefault();
+        }
+
         public static List<ReleaseInfo> ParseStableReleases(string json)
         {
             var serializer = new JavaScriptSerializer { MaxJsonLength = 4 * 1024 * 1024 };

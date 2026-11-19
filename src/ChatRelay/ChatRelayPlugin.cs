@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Diagnostics;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
@@ -150,7 +151,7 @@ namespace ChatRelay
                     if (result.Status == UpdateCheckStatus.UpdateAvailable)
                     {
                         if (!manual && settings.SkippedVersion == result.Release.Version.ToString()) control.ShowUpdateSkipped(settings.SkippedVersion);
-                        else { control.FocusUpdateTab(); status.Text = T("UpdateAvailable", current.ToString(3), result.Release.Version); }
+                        else { control.FocusUpdateTab(); status.Text = T(result.Release.ApiLimited ? "UpdateAvailableRateLimited" : "UpdateAvailable", current.ToString(3), result.Release.Version); }
                     }
                 });
             }
@@ -182,9 +183,25 @@ namespace ChatRelay
             try
             {
                 var package = await updates.DownloadAndVerifyAsync(release, cancellation.Token).ConfigureAwait(false);
-                lock (gate) { if (stopped) return; }
                 var targetPath = ResolvePluginDllPath(ActGlobals.oFormActMain.ActPlugins, this);
-                PostUi(() => { control.SetPreparedUpdate(package.StagedDllPath, targetPath); status.Text = T("Prepared"); });
+                var originalHash = UpdatePackageVerifier.ComputeSha256(targetPath);
+                lock (gate) { if (stopped) return; }
+                var arguments = "--wait-pid " + Process.GetCurrentProcess().Id.ToString(CultureInfo.InvariantCulture) +
+                    " --wait-start " + Process.GetCurrentProcess().StartTime.ToUniversalTime().Ticks.ToString(CultureInfo.InvariantCulture) +
+                    " --source " + QuoteArgument(package.StagedDllPath) + " --target " + QuoteArgument(targetPath) +
+                    " --sha256 " + package.DllSha256 + " --version " + package.Release.Version + " --original " + originalHash;
+                using (var updater = Process.Start(new ProcessStartInfo
+                {
+                    FileName = package.StagedUpdaterPath,
+                    Arguments = arguments,
+                    WorkingDirectory = package.PreparedDirectory,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                }))
+                {
+                    if (updater == null) throw new InvalidOperationException("UpdaterStartFailed");
+                }
+                PostUi(() => { control.SetUpdateText("Prepared"); status.Text = T("Prepared"); });
             }
             catch { PostUi(() => { control.SetUpdateText("UpdateFailed", T("UpdateProblem")); status.Text = T("UpdateProblem"); }); }
             finally { lock (gate) preparing = false; }
@@ -245,6 +262,8 @@ namespace ChatRelay
             if (value == null) return;
             value.Stop(); value.Tick -= handler; value.Dispose();
         }
+
+        private static string QuoteArgument(string value) => "\"" + (value ?? string.Empty).Replace("\"", "\\\"") + "\"";
     }
 }
 
